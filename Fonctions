@@ -1,1 +1,7 @@
-import numpy as np 
+import numpy as np  # type: ignore
+
+def transfoDomaine(points) :
+    borneInf = points[0][0]
+    borneSup = points[len(points)-1][0]
+    
+    return()
