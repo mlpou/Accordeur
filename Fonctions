@@ -1,7 +1,48 @@
-import numpy as np  # type: ignore
+import math
 
-def transfoDomaine(points) :
+def transfoDomaine(points) : #Entrée : liste 2D des points d'amplitude selon le temps
     borneInf = points[0][0]
     borneSup = points[len(points)-1][0]
+    a = 2/(borneSup-borneInf)
+    b = (borneInf+borneSup)/(borneInf-borneSup)
+    pointsTransfo = []
+    for i in points :
+        list = [(i[0])*a+b, i[1]]
+        pointsTransfo.append(list)
+    return(pointsTransfo) # Sortie : liste 2D des points d'amplitude selon le temps, après changement de domaine
+
+def sommeRiemannConst(List, const) :
+    sum = 0
+    for i in range(len(List)-1):
+        multi = List[i][1]*const
+        ecart = List[i+1][1] - List[i][1]
+        sum += multi*ecart
+    return(sum)
+
+def sommeRiemannCos(List, degre) :
+    sum = 0
+    for i in range(len(List)-1):
+        multi = List[i][1]*math.cos(List[i][0]*math.pi*degre)
+        ecart = List[i+1][1] - List[i][1]
+        sum += multi*ecart
+    return(sum)
+
+def sommeRiemannSin(List, degre) :
+    sum = 0
+    for i in range(len(List)-1):
+        multi = List[i][1]*math.sin(List[i][0]*math.pi*degre)
+        ecart = List[i+1][1] - List[i][1]
+        sum += multi*ecart
+    return(sum)
+
+
+def coefficients (pointsTransfo, degre, precision) : #Entrée : liste sortant de la transfo de domaine, nombre de terme du polynome, écart entre chaque fréquence
+    constante = 1/(2**(1/2))
+    retour =[sommeRiemannConst(pointsTransfo, constante)]
+    for i in range(1, degre+1) :
+        retour.append(sommeRiemannCos(pointsTransfo, i*precision))
+    for i in range(1, degre+1) :
+        retour.append(sommeRiemannSin(pointsTransfo, i*precision))
+    return(retour) # Retour : liste de tous les coefficients du polynomes trigonométrique
     
-    return()
+    
