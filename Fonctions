@@ -11,19 +11,22 @@ def transfoDomaine(points) : #Entrée : liste 2D des points d'amplitude selon le
         pointsTransfo.append(list)
     return(pointsTransfo) # Sortie : liste 2D des points d'amplitude selon le temps, après changement de domaine
 
+
 def sommeRiemannConst(List, const) :
     sum = 0
     for i in range(len(List)-1):
         multi = List[i][1]*const
-        ecart = List[i+1][1] - List[i][1]
+        ecart = List[i+1][0] - List[i][0]
         sum += multi*ecart
     return(sum)
+
+print(sommeRiemannConst(fprime, 1/(2**(1/2))))
 
 def sommeRiemannCos(List, degre) :
     sum = 0
     for i in range(len(List)-1):
         multi = List[i][1]*math.cos(List[i][0]*math.pi*degre)
-        ecart = List[i+1][1] - List[i][1]
+        ecart = List[i+1][0] - List[i][0]
         sum += multi*ecart
     return(sum)
 
@@ -31,7 +34,7 @@ def sommeRiemannSin(List, degre) :
     sum = 0
     for i in range(len(List)-1):
         multi = List[i][1]*math.sin(List[i][0]*math.pi*degre)
-        ecart = List[i+1][1] - List[i][1]
+        ecart = List[i+1][0] - List[i][0]
         sum += multi*ecart
     return(sum)
 
@@ -43,6 +46,4 @@ def coefficients (pointsTransfo, degre, precision) : #Entrée : liste sortant de
         retour.append(sommeRiemannCos(pointsTransfo, i*precision))
     for i in range(1, degre+1) :
         retour.append(sommeRiemannSin(pointsTransfo, i*precision))
-    return(retour) # Retour : liste de tous les coefficients du polynomes trigonométrique
-    
-    
+    return(retour) # Retour : liste de tous les coefficients du polynomes trigonométriques
