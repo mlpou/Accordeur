@@ -14,7 +14,6 @@ def transfoDomaine(points) : #Entrée : liste 2D des points d'amplitude selon le
     pointsTransfo[0].append[a]
     return(pointsTransfo) # Sortie : liste 2D des points d'amplitude selon le temps, après changement de domaine
 
-fprime = transfoDomaine(f)
 
 def sommeRiemannConst(List, const) :
     sum = 0
@@ -85,8 +84,10 @@ def coefficientsTrapeze(pointsTransfo, degre, precision) :
         retour.append(trapezeSin(pointsTransfo, i*precision))
     return(retour) # Retour : liste de tous les coefficients du polynomes trigonométriques
 
-def frequenceSin(i, pointsTransfo) :
-    return (((len(pointsTransfo)-1)/2 + i)/2)*pointsTransfo[0][2]
+def listeSeparees(pointsTransfo) : 
+    cos = pointsTransfo[1 : (len(pointsTransfo)+1)/2]
+    sin = pointsTransfo[(len(pointsTransfo)+1)/2 :]
+    return ([cos,sin])
 
-
-print(coefficientsTrapeze(fprime,4,1))
+def frequence(i, coef, precision) :
+    return ((i+1)/2)*coef*precision
