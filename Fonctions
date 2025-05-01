@@ -86,7 +86,7 @@ def coefficientsTrapeze(pointsTransfo, degre, precision) :
     return(retour) # Retour : liste de tous les coefficients du polynomes trigonométriques
 
 def frequenceSin(i, pointsTransfo) :
-    fAngulaire = pointsTransfo[(len(pointsTransfo)-1)/2+i]
+    return (((len(pointsTransfo)-1)/2 + i)/2)*pointsTransfo[0][2]
 
 
 print(coefficientsTrapeze(fprime,4,1))
