@@ -89,5 +89,5 @@ def listeSeparees(pointsTransfo) :
     sin = pointsTransfo[(len(pointsTransfo)+1)/2 :]
     return ([cos,sin])
 
-def frequence(i, coef, precision) :
-    return ((i+1)/2)*coef*precision
+def frequence(i, precision) :
+    return (i+1)/2*precision
