@@ -132,13 +132,6 @@ def sommeRiemannConst(List, const) :
         sum += multi*ecart
     return(sum)
 
-def trapezeConst(List, const):
-    somme = List[0][1]*const*(List[1][0]-List[0][0]) + List[len(List)-1][1]*const*(List[len(List)-1][0]-List[len(List)-2][0])
-    for i in range(1,len(List)-1):
-        multi = List[i][1]*const
-        ecart = List[i+1][0] - List[i][0]
-        somme += 2*multi*ecart
-    return(somme/2)
 
 def sommeRiemannCos(List, degre) :
     sum = 0
@@ -148,13 +141,6 @@ def sommeRiemannCos(List, degre) :
         sum += multi*ecart
     return(sum)
 
-def trapezeCos(List, degre):
-    somme = List[0][1]*(math.cos(List[0][0]*math.pi*degre))*(List[1][0]-List[0][0]) + List[len(List)-1][1]*(math.cos(List[len(List)-1][0]*math.pi*degre))*(List[len(List)-1][0]-List[len(List)-2][0])
-    for i in range(1,len(List)-1):
-        multi = List[i][1]*math.cos(List[i][0]*math.pi*degre)
-        ecart = List[i+1][0] - List[i][0]
-        somme += 2*multi*ecart
-    return(somme/2)
 
 def sommeRiemannSin(List, degre) :
     sum = 0
@@ -164,13 +150,6 @@ def sommeRiemannSin(List, degre) :
         sum += multi*ecart
     return(sum)
 
-def trapezeSin(List, degre):
-    somme = List[0][1]*(math.sin(List[0][0]*math.pi*degre))*(List[1][0]-List[0][0]) + List[len(List)-1][1]*(math.sin(List[len(List)-1][0]*math.pi*degre))*(List[len(List)-1][0]-List[len(List)-2][0])
-    for i in range(1,len(List)-1):
-        multi = List[i][1]*math.sin(List[i][0]*math.pi*degre)
-        ecart = List[i+1][0] - List[i][0]
-        somme += 2*multi*ecart
-    return(somme/2)
 
 def coefficients(pointsTransfo, degre, precision): 
     constante = 1/(2**(1/2))
@@ -181,14 +160,6 @@ def coefficients(pointsTransfo, degre, precision):
         retour.append(sommeRiemannSin(pointsTransfo, i * precision))
     return(retour)
 
-def coefficientsTrapeze(pointsTransfo, degre, precision) :
-    constante = 1/(2**(1/2))
-    retour =[trapezeConst(pointsTransfo, constante)]
-    for i in range(1, degre+1) :
-        retour.append(trapezeCos(pointsTransfo, i*precision))
-    for i in range(1, degre+1) :
-        retour.append(trapezeSin(pointsTransfo, i*precision))
-    return(retour)
 
 def frequence(i, precision):
     return (i + 1) * precision / duration
@@ -201,7 +172,6 @@ def ourtransform(points, degre, precision):
     cosines = coeffs[1:degre+1]
     sines = coeffs[degre+1:]
     raw_mags = [math.sqrt(c**2 + s**2) for c, s in zip(cosines, sines)]
-    max_mag = max(raw_mags) or 1  # avoid divide-by-zero
     magnitudes = [m * 15000 for m in raw_mags]
 
     if len(freqs) < 2:
@@ -237,7 +207,7 @@ def mic_loop():
         dynamic_degre = int((max_display_freq * duration) / precision)
         freqs, fft_magnitude = ourtransform(points, degre=dynamic_degre, precision=precision)
         latest_fft_data = (freqs, fft_magnitude)
-        time.sleep(0.02)
+        time.sleep(0.2)
 
 
 mic_thread = Thread(target=mic_loop, daemon=True)
@@ -329,7 +299,7 @@ def update_plot(frame=None):
     average_delta = np.mean(deltas) if deltas else 0
 
     text = f"Moyenne Δ par rapport aux harmoniques : {average_delta:+.2f} Hz\n"
-    text += "\nMaximums utilisé (Hz):\n"
+    text += "\nMaximums utilisés (Hz):\n"
     for i, f in enumerate(top_freqs):
         text += f"{i+1}: {f:.1f} Hz\n"
 
