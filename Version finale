@@ -1,0 +1,361 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import sounddevice as sd
+import os
+import tkinter as tk
+from threading import Thread
+import time
+import math
+
+import board
+import neopixel
+
+note_frequencies = {
+    'A0': 27.50, 'A#0': 29.14, 'B0': 30.87,
+    'C1': 32.70, 'C#1': 34.65, 'D1': 36.71, 'D#1': 38.89, 'E1': 41.20,
+    'F1': 43.65, 'F#1': 46.25, 'G1': 49.00, 'G#1': 51.91,
+    'A1': 55.00, 'A#1': 58.27, 'B1': 61.74,
+    'C2': 65.41, 'C#2': 69.30, 'D2': 73.42, 'D#2': 77.78, 'E2': 82.41,
+    'F2': 87.31, 'F#2': 92.50, 'G2': 98.00, 'G#2': 103.83,
+    'A2': 110.00, 'A#2': 116.54, 'B2': 123.47,
+    'C3': 130.81, 'C#3': 138.59, 'D3': 146.83, 'D#3': 155.56, 'E3': 164.81,
+    'F3': 174.61, 'F#3': 185.00, 'G3': 196.00, 'G#3': 207.65,
+    'A3': 220.00, 'A#3': 233.08, 'B3': 246.94,
+    'C4': 261.63, 'C#4': 277.18, 'D4': 293.66, 'D#4': 311.13, 'E4': 329.63,
+    'F4': 349.23, 'F#4': 369.99, 'G4': 392.00, 'G#4': 415.30,
+    'A4': 440.00, 'A#4': 466.16, 'B4': 493.88,
+    'C5': 523.25, 'C#5': 554.37, 'D5': 587.33, 'D#5': 622.25, 'E5': 659.25,
+    'F5': 698.46, 'F#5': 739.99, 'G5': 783.99, 'G#5': 830.61,
+    'A5': 880.00, 'A#5': 932.33, 'B5': 987.77,
+    'C6': 1046.50, 'C#6': 1108.73, 'D6': 1174.66, 'D#6': 1244.51, 'E6': 1318.51,
+    'F6': 1396.91, 'F#6': 1479.98, 'G6': 1567.98, 'G#6': 1661.22,
+    'A6': 1760.00, 'A#6': 1864.66, 'B6': 1975.53,
+    'C7': 2093.00, 'C#7': 2217.46, 'D7': 2349.32, 'D#7': 2489.02, 'E7': 2637.02,
+    'F7': 2793.83, 'F#7': 2959.96, 'G7': 3135.96, 'G#7': 3322.44,
+    'A7': 3520.00, 'A#7': 3729.31, 'B7': 3951.07,
+    'C8': 4186.01
+}
+
+instrument_notes = {
+    'piano': list(note_frequencies.keys()),
+    'guitar': ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'],
+    'ukulele': ['G4', 'C4', 'E4', 'A4']
+}
+
+# LED setup
+LED_COUNT = 21
+LED_PIN = board.D18  # GPIO 18
+pixels = neopixel.NeoPixel(LED_PIN, LED_COUNT, auto_write=False)
+
+
+# Settings
+duration = 0.1
+sample_rate = 44100
+n_samples = int(duration * sample_rate)
+precision = 0.33  # Frequency resolution in Hz
+
+instrument = None
+
+def select_instrument(name):
+    global instrument
+    instrument = name
+    root.quit()
+
+root = tk.Tk()
+root.title("Sélectionner un instrument")
+root.geometry("500x200")
+
+label = tk.Label(root, text="Choisissez un instrument à accorder :", font=("Helvetica", 14))
+label.pack(pady=20)
+
+button_frame = tk.Frame(root)
+button_frame.pack(pady=10)
+
+tk.Button(button_frame, text="Piano", width=12, command=lambda: select_instrument('piano')).grid(row=0, column=0, padx=10, pady=5)
+tk.Button(button_frame, text="Guitare", width=12, command=lambda: select_instrument('guitar')).grid(row=0, column=1, padx=10, pady=5)
+tk.Button(button_frame, text="Ukulélé", width=12, command=lambda: select_instrument('ukulele')).grid(row=1, column=0, columnspan=2, pady=5)
+
+root.mainloop()
+root.destroy()
+
+instrument_folder = f'/home/Owen/Tuner/data/{instrument.lower()}'
+if not os.path.exists(instrument_folder):
+    print(f"\u274c Folder '{instrument_folder}' n'éxiste pas.")
+    exit()
+
+# Load and filter files
+def extract_note_name(filename):
+    return filename.replace('synthetic_', '').replace('_fft.npz', '').upper()
+
+def note_sort_key(filename):
+    note = extract_note_name(filename)
+    return instrument_notes[instrument.lower()].index(note) if note in instrument_notes[instrument.lower()] else float('inf')
+
+valid_notes = set(instrument_notes[instrument.lower()])
+unsorted_files = [f for f in os.listdir(instrument_folder) if f.endswith('.npz')]
+note_files = sorted(
+    [f for f in unsorted_files if extract_note_name(f) in valid_notes],
+    key=note_sort_key
+)
+
+if not note_files:
+    print(f"Pas de .npz fichier trouvé pour cet instrument '{instrument}' dans {instrument_folder}.")
+    exit()
+
+current_note_index = 0
+
+def load_reference(index):
+    filepath = os.path.join(instrument_folder, note_files[index])
+    data = np.load(filepath)
+    note_name = extract_note_name(note_files[index])
+    return data['frequencies'], data['magnitudes'], note_name
+
+ref_freqs, ref_magnitudes, current_note_name = load_reference(current_note_index)
+latest_fft_data = None
+
+def transfoDomaine(points) :
+    borneInf = points[0][0]
+    borneSup = points[len(points)-1][0]
+    a = 2/(borneSup-borneInf)
+    b = (borneInf+borneSup)/(borneInf-borneSup)
+    pointsTransfo = []
+    for i in points :
+        list = [(i[0])*a+b, i[1]]
+        pointsTransfo.append(list)
+    return(pointsTransfo)
+
+def sommeRiemannConst(List, const) :
+    sum = 0
+    for i in range(len(List)-1):
+        multi = List[i][1]*const
+        ecart = List[i+1][0] - List[i][0]
+        sum += multi*ecart
+    return(sum)
+
+def trapezeConst(List, const):
+    somme = List[0][1]*const*(List[1][0]-List[0][0]) + List[len(List)-1][1]*const*(List[len(List)-1][0]-List[len(List)-2][0])
+    for i in range(1,len(List)-1):
+        multi = List[i][1]*const
+        ecart = List[i+1][0] - List[i][0]
+        somme += 2*multi*ecart
+    return(somme/2)
+
+def sommeRiemannCos(List, degre) :
+    sum = 0
+    for i in range(len(List)-1):
+        multi = List[i][1]*math.cos(List[i][0]*math.pi*degre)
+        ecart = List[i+1][0] - List[i][0]
+        sum += multi*ecart
+    return(sum)
+
+def trapezeCos(List, degre):
+    somme = List[0][1]*(math.cos(List[0][0]*math.pi*degre))*(List[1][0]-List[0][0]) + List[len(List)-1][1]*(math.cos(List[len(List)-1][0]*math.pi*degre))*(List[len(List)-1][0]-List[len(List)-2][0])
+    for i in range(1,len(List)-1):
+        multi = List[i][1]*math.cos(List[i][0]*math.pi*degre)
+        ecart = List[i+1][0] - List[i][0]
+        somme += 2*multi*ecart
+    return(somme/2)
+
+def sommeRiemannSin(List, degre) :
+    sum = 0
+    for i in range(len(List)-1):
+        multi = List[i][1]*math.sin(List[i][0]*math.pi*degre)
+        ecart = List[i+1][0] - List[i][0]
+        sum += multi*ecart
+    return(sum)
+
+def trapezeSin(List, degre):
+    somme = List[0][1]*(math.sin(List[0][0]*math.pi*degre))*(List[1][0]-List[0][0]) + List[len(List)-1][1]*(math.sin(List[len(List)-1][0]*math.pi*degre))*(List[len(List)-1][0]-List[len(List)-2][0])
+    for i in range(1,len(List)-1):
+        multi = List[i][1]*math.sin(List[i][0]*math.pi*degre)
+        ecart = List[i+1][0] - List[i][0]
+        somme += 2*multi*ecart
+    return(somme/2)
+
+def coefficients(pointsTransfo, degre, precision): 
+    constante = 1/(2**(1/2))
+    retour = [sommeRiemannConst(pointsTransfo, constante)]
+    for i in range(1, degre+1):
+        retour.append(sommeRiemannCos(pointsTransfo, i * precision))
+    for i in range(1, degre+1):
+        retour.append(sommeRiemannSin(pointsTransfo, i * precision))
+    return(retour)
+
+def coefficientsTrapeze(pointsTransfo, degre, precision) :
+    constante = 1/(2**(1/2))
+    retour =[trapezeConst(pointsTransfo, constante)]
+    for i in range(1, degre+1) :
+        retour.append(trapezeCos(pointsTransfo, i*precision))
+    for i in range(1, degre+1) :
+        retour.append(trapezeSin(pointsTransfo, i*precision))
+    return(retour)
+
+def frequence(i, precision):
+    return (i + 1) * precision / duration
+
+def ourtransform(points, degre, precision):
+    pointsTransfo = transfoDomaine(points)
+    coeffs = coefficients(pointsTransfo, degre, precision)
+    freqs = [frequence(i, precision) for i in range(degre)]
+
+    cosines = coeffs[1:degre+1]
+    sines = coeffs[degre+1:]
+    raw_mags = [math.sqrt(c**2 + s**2) for c, s in zip(cosines, sines)]
+    max_mag = max(raw_mags) or 1  # avoid divide-by-zero
+    magnitudes = [m * 15000 for m in raw_mags]
+
+    if len(freqs) < 2:
+        return [], []
+
+    return freqs[:len(magnitudes)], magnitudes
+
+
+def mic_loop():
+    global latest_fft_data
+    while True:
+        pixels[0] = (50, 50, 0)
+        pixels[20] = (50, 50, 0)
+        pixels.show()
+        time.sleep(0.7)
+        pixels[0] = (0, 0, 0)
+        pixels[20] = (0, 0, 0)
+        pixels.show()
+        audio_data = sd.rec(n_samples, samplerate=sample_rate, channels=1, dtype='float32')
+        sd.wait()
+
+        audio_array = audio_data.flatten()
+        time_axis = np.linspace(0, duration, n_samples, endpoint=False)
+
+        points = [[float(time_axis[i]), float(audio_array[i])] for i in range(n_samples)]
+
+        if len(points) < 2:
+            time.sleep(duration)
+            continue
+
+        base_freq = note_frequencies[current_note_name]
+        max_display_freq = base_freq * 3.5
+        dynamic_degre = int((max_display_freq * duration) / precision)
+        freqs, fft_magnitude = ourtransform(points, degre=dynamic_degre, precision=precision)
+        latest_fft_data = (freqs, fft_magnitude)
+        time.sleep(0.02)
+
+
+mic_thread = Thread(target=mic_loop, daemon=True)
+mic_thread.start()
+
+
+plt.ion()
+fig, ax = plt.subplots()
+
+def update_leds(delta):
+    global top_freqs
+    if (np.isnan(delta) or abs(delta) < 0.5) and not top_freqs:
+        for i in range(1, 20):
+            pixels[i] = (0, 0, 0)
+        pixels.show()
+        return
+    delta = max(min(delta, 30), -30)  # Clamp between -30 and +30
+    center = LED_COUNT // 2
+    for i in range(1, 20):
+        pixels[i] = (0, 0, 0)  # Clear strip
+    pixels.show()
+
+    if abs(delta) < 2:
+        color = (0, 10, 0)
+        for i in range(1,20):
+            pixels[i] = color
+        pixels.show()
+        return
+
+    leds_on = int(((30 - abs(delta)) / 28) * center)
+    color = (40, 0, 0)
+
+    for i in range(leds_on):
+        if delta > 0:
+            idx = min(19, LED_COUNT - 2 - i)
+        else:
+            idx = max(1, i)
+        pixels[idx] = color
+    pixels.show()
+
+def update_plot(frame=None):
+    global latest_fft_data, ref_freqs, ref_magnitudes, current_note_name, top_freqs
+
+    if latest_fft_data is None:
+        return
+
+    min_separation_hz = 40
+    intensity_threshold = 70
+
+    freqs, fft_magnitude = latest_fft_data
+    if len(freqs) < 2:
+        return
+    fft_magnitude_copy = np.array([m if f >= 100 else 0 for f, m in zip(freqs, fft_magnitude)])
+    freq_resolution = freqs[1] - freqs[0]
+    min_separation_bins = int(min_separation_hz / freq_resolution)
+
+    top_freqs, top_magnitudes = [], []
+    while True:
+        idx = np.argmax(fft_magnitude_copy)
+        if fft_magnitude_copy[idx] < intensity_threshold:
+            break
+        freq = freqs[idx]
+        mag = fft_magnitude_copy[idx]
+        top_freqs.append(freq)
+        top_magnitudes.append(mag)
+        low = max(0, idx - min_separation_bins)
+        high = min(len(fft_magnitude_copy), idx + min_separation_bins + 1)
+        fft_magnitude_copy[low:high] = 0
+
+    # Only clear axes just before plotting to minimize redraw overhead
+    ax.cla()
+    ax.plot(freqs, fft_magnitude, label='Live Microphone', linewidth=2)
+    ax.plot(ref_freqs, ref_magnitudes * 0.1, label=f'Reference {current_note_name}', linestyle='--', linewidth=2, alpha=0.7)
+    ax.set_xlabel('Fréquence (Hz)')
+    ax.set_ylabel('Intensité')
+    ax.set_title(f'Accorder {current_note_name}')
+    ax.set_ylim(0, 400)
+    ax.set_xlim(0, note_frequencies[current_note_name] * 3.5)
+
+    base_freq = note_frequencies[current_note_name]
+    expected_harmonics = np.array([base_freq * (i + 1) for i in range(10)])
+    deltas = []
+    matched_harmonics = set()
+    for measured in top_freqs:
+        closest_harmonic = min(expected_harmonics, key=lambda h: abs(h - measured))
+        if closest_harmonic not in matched_harmonics:
+            deltas.append(measured - closest_harmonic)
+            matched_harmonics.add(closest_harmonic)
+    average_delta = np.mean(deltas) if deltas else 0
+
+    text = f"Moyenne Δ par rapport aux harmoniques : {average_delta:+.2f} Hz\n"
+    text += "\nMaximums utilisé (Hz):\n"
+    for i, f in enumerate(top_freqs):
+        text += f"{i+1}: {f:.1f} Hz\n"
+
+    ax.text(0.02, 0.98, text, transform=ax.transAxes, fontsize=9,
+            verticalalignment='top', horizontalalignment='left',
+            bbox=dict(boxstyle='round,pad=0.5', facecolor='white', alpha=0.8))
+
+    update_leds(average_delta)
+
+def next_note(event):
+    global current_note_index, ref_freqs, ref_magnitudes, current_note_name
+    current_note_index = (current_note_index + 1) % len(note_files)
+    ref_freqs, ref_magnitudes, current_note_name = load_reference(current_note_index)
+
+def previous_note(event):
+    global current_note_index, ref_freqs, ref_magnitudes, current_note_name
+    current_note_index = (current_note_index - 1) % len(note_files)
+    ref_freqs, ref_magnitudes, current_note_name = load_reference(current_note_index)
+
+button_ax_prev = plt.axes([0.1, 0.01, 0.2, 0.04])
+button_ax_next = plt.axes([0.7, 0.01, 0.2, 0.04])
+btn_prev = plt.Button(button_ax_prev, 'Previous')
+btn_prev.on_clicked(previous_note)
+btn_next = plt.Button(button_ax_next, 'Next')
+btn_next.on_clicked(next_note)
+
+while True:
+    update_plot()
+    plt.pause(0.02)
