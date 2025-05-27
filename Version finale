@@ -52,7 +52,7 @@ pixels = neopixel.NeoPixel(LED_PIN, LED_COUNT, auto_write=False)
 duration = 0.1
 sample_rate = 44100
 n_samples = int(duration * sample_rate)
-precision = 0.33  # Frequency resolution in Hz
+precision = 6
 
 instrument = None
 
